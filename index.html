@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/hack-font@3.3.0/build/web/hack.css">
+    <link href="output.css" rel="stylesheet">
+
+        <title>Local LLM Multi-Agent Literature Reviewer</title>
+        <!-- PDF.js CDN -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.9.179/pdf.min.js"></script>
+        <script>
+            // Configure PDF.js worker
+            if (window.pdfjsLib) {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.9.179/pdf.worker.min.js';
+            }
+        </script>
+</head>
+
+<body class="p-10 font-hack bg-white h-screen box-border">
+
+    <div id="LLM-Multi-Agent-Literature-Reviewer-App" class="h-full flex flex-col">
+        <header id ="app-header" class="h-[15%] border-4 border-black flex justify-center">
+            <h1 id="app-title" class="border-4 border-black m-2.5 w-full bg-gray-600 text-white font-hack text-lg text-center flex items-center justify-center">Hi I'm Your Local Literature Reviewer :]</h1>
+        </header>
+
+        <main id="app-section" class="h-[calc(80%_-_20px)] border-4 border-black mt-5 overflow-auto">
+            <!-- PDF Ingestion + Extraction -->
+            <section id="pdf-zone" class="w-full p-5 text-center">
+                <div id="dropzone" class="border-4 border-black border-dashed rounded p-10 hover:bg-gray-50 cursor-pointer">
+                    <p class="text-lg">Glissez-déposez des PDF ici ou cliquez pour sélectionner</p>
+                    <p class="mt-5 text-sm">Types acceptés: PDF (.pdf)</p>
+                    <input id="pdf-input" type="file" accept="application/pdf" multiple class="hidden" />
+                </div>
+                <div id="memory-bank" class="mt-5">Chunks stockés: <span id="chunk-count">0</span></div>
+            </section>
+            <section id="extracted-text" class="mt-5">
+                <h2 class="text-lg">Texte extrait</h2>
+                <pre id="extracted-output" class="mt-2 p-5 border-4 border-black h-[300px] overflow-auto whitespace-pre-wrap bg-white"></pre>
+            </section>
+            <div id="discussion-section">
+                ...
+            </div>
+            <div class="prompt-section">
+                    <textarea id="prompt-input" placeholder="Write your prompt here..."></textarea>
+                    <button id="submit-prompt">Submit Prompt</button>
+            </div>
+        </main>
+
+        <footer class="h-[5%] flex items-center justify-center">
+            <p>&copy; 2025 Local LLM Multi-Agent Literature Reviewer</p>
+        </footer>
+    </div>
+
+    <script type="module" src="./input.js"></script>
+    
+</body>
+</html>

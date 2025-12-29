@@ -1,0 +1,24 @@
+{
+  "name": "aicg_project_local_llm_multi-agent_literature_reviewer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LucaricotRouge/Local_LLM_Multi-Agent_Literature_Reviewer.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/LucaricotRouge/Local_LLM_Multi-Agent_Literature_Reviewer/issues"
+  },
+  "homepage": "https://github.com/LucaricotRouge/Local_LLM_Multi-Agent_Literature_Reviewer#readme",
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.18",
+    "tailwindcss": "^4.1.18"
+  }
+}
