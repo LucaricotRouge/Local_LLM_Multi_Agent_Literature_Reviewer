@@ -1,11 +1,12 @@
 import { pipeline } from '@huggingface/transformers';
 import { CreateMLCEngine } from '@mlc-ai/web-llm';
-import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+// import * as webllm from "https://esm.run/@mlc-ai/web-llm";
 
 const state = {
   vectorStore: [], // { text, embedding: null, source }
   chunksCount: 0,
   chatHistory: [], // [{ role: 'user'|'assistant', content: string }]
+  pdfCount: 0,
 };
 
 const systemPrompt = `You are an Academic Research Assistant. Answer succinctly, cite relevant parts of the provided context, and avoid fabricating references. If the context is insufficient, say so and suggest what to upload.`;
@@ -79,7 +80,7 @@ async function summarizeHistory(messages) {
  * @returns {string[]} Array of chunk strings.
  */
 
-async function extractTextFromPDF(file) { // file is a File object (html input or drag-drop : local file of the user)
+async function extractTextFromPDF(file, onProgress) { // file is a File object (html input or drag-drop : local file of the user)
   const arrayBuffer = await file.arrayBuffer(); // arrayBuffer() converts File to binary data
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise; // load PDF document from binary data, .promise allows await of all loading 
   // it contains : 
@@ -88,6 +89,7 @@ async function extractTextFromPDF(file) { // file is a File object (html input o
   // getPage: function(...)
   // }
   let fullText = '';
+  if (typeof onProgress === 'function') onProgress(0);
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) { // for each page of pdf
     const page = await pdf.getPage(pageNum); // get the page
     const content = await page.getTextContent();
@@ -102,6 +104,10 @@ async function extractTextFromPDF(file) { // file is a File object (html input o
 
     const strings = content.items.map((item) => item.str); // extract only the text strings
     fullText += strings.join(' ') + '\n'; // join them with space and add a newline at the end of the page
+    if (typeof onProgress === 'function') {
+      const pct = Math.round((pageNum / pdf.numPages) * 100);
+      onProgress(pct);
+    }
   }
   return fullText;
 }
@@ -129,22 +135,27 @@ function chunkTextSliding(text, size = 500, overlap = 100) {
   return chunks;
 }
 
-function updateChunkCount() {
-  const el = document.getElementById('chunk-count');
-  if (el) el.textContent = String(state.chunksCount);
-}
+// function updateChunkCount() {
+//   const el = document.getElementById('chunk-count');
+//   if (el) el.textContent = String(state.chunksCount);
+// }
 
-function appendExtractedOutput(text, sourceName) {
-  const output = document.getElementById('extracted-output');
-  if (!output) return;
-  const header = `\n--- Fichier: ${sourceName} ---\n`;
-  output.textContent += header + text + '\n';
-}
+// function appendExtractedOutput(text, sourceName) {
+//   const output = document.getElementById('extracted-output');
+//   if (!output) return;
+//   const header = `\n--- Fichier: ${sourceName} ---\n`;
+//   output.textContent += header + text + '\n';
+// }
 
 let _extractorPromise = null; 
 async function embedText(text) { // have to be initialized only once
   if (!_extractorPromise) {
-    _extractorPromise = pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+    const WebGPU = typeof navigator !== 'undefined' && !!navigator.gpu;
+    _extractorPromise = pipeline(
+      'feature-extraction',
+      'Xenova/all-MiniLM-L6-v2',
+      { device: WebGPU ? 'webgpu' : 'cpu' }
+    );
   }
   const extractor = await _extractorPromise;
   const result = await extractor(text, { pooling: 'mean', normalize: true });
@@ -205,7 +216,9 @@ function cosineSimilarity(a, b) {
 }
 
 async function processPDFFile(file) {
-  const text = await extractTextFromPDF(file);
+  const text = await extractTextFromPDF(file, (pct) => {
+    updateLoadingBar(pct);
+  });
   const chunks = chunkTextSliding(text, 500, 100);
   const entries = chunks.map((chunkText, idx) => ({
     text: chunkText,
@@ -222,8 +235,8 @@ async function processPDFFile(file) {
   }
   state.vectorStore.push(...entries);
   state.chunksCount += chunks.length;
-  appendExtractedOutput(text, file.name);
-  updateChunkCount();
+  // appendExtractedOutput(text, file.name);
+  // updateChunkCount();
 }
 
 function setupDropZone() {
@@ -239,7 +252,14 @@ function setupDropZone() {
 
     input.addEventListener('change', async () => {
       const files = Array.from(input.files || []).filter((f) => (f.type === 'application/pdf') || /\.pdf$/i.test(f.name)); // allow PDFs by MIME or extension
-      for (const f of files) await processPDFFile(f);
+      if (files.length) showLoadingBar();
+      for (const f of files) {
+        await processPDFFile(f);
+        state.pdfCount += 1;
+        updatePdfCountUI();
+      }
+      updateLoadingBar(100);
+      hideLoadingBar();
       input.value = '';
     });
   }
@@ -259,7 +279,14 @@ function setupDropZone() {
     });
     dropzone.addEventListener('drop', async (e) => {
       const files = Array.from(e.dataTransfer?.files || []).filter((f) => (f.type === 'application/pdf') || /\.pdf$/i.test(f.name));
-      for (const f of files) await processPDFFile(f);
+      if (files.length) showLoadingBar();
+      for (const f of files) {
+        await processPDFFile(f);
+        state.pdfCount += 1;
+        updatePdfCountUI();
+      }
+      updateLoadingBar(100);
+      hideLoadingBar();
     });
   }
 }
@@ -336,6 +363,124 @@ window.addEventListener('DOMContentLoaded', () => {
   if (submit) submit.addEventListener('click', handleQuery);
 });
 
+
+
+
+
+
+
+
+
+function createLoadingBar() {
+  const wrapper = document.createElement('div');
+  wrapper.style.border = '4px solid black';
+  wrapper.style.borderRadius = '12px';
+  wrapper.style.height = '24px';
+  wrapper.style.width = '100%';
+  wrapper.style.position = 'relative';
+  wrapper.style.overflow = 'hidden';
+
+  const fill = document.createElement('div');
+  fill.style.height = '100%';
+  fill.style.width = '0%';
+  fill.style.background = 'rgb(172, 50, 50)';
+  fill.style.borderRadius = '12px';
+
+  const label = document.createElement('span');
+  label.style.position = 'absolute';
+  label.style.left = '50%';
+  label.style.top = '50%';
+  label.style.transform = 'translate(-50%, -50%)';
+  label.style.fontFamily = 'Hack, monospace';
+  label.style.fontSize = '14px';
+  label.textContent = '0%';
+
+  wrapper.appendChild(fill);
+  wrapper.appendChild(label);
+
+  return {
+    element: wrapper,
+    update: (pct) => {
+      const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+      fill.style.width = clamped + '%';
+      label.textContent = clamped + '%';
+    }
+  };
+}
+
+function getDropzone() {
+  return document.getElementById('dropzone');
+}
+
+function getHintEl() {
+  const dz = getDropzone();
+  return dz ? dz.querySelector('p.text-lg') : null;
+}
+
+function getAcceptedTypesEl() {
+  const dz = getDropzone();
+  if (!dz) return null;
+  const items = dz.querySelectorAll('p');
+  // try to find the accepted types line
+  for (const p of items) {
+    if (p.textContent && p.textContent.toLowerCase().includes('accepted') && p.textContent.toLowerCase().includes('pdf')) return p;
+  }
+  return null;
+}
+
+function ensurePdfCountEl() {
+  const parent = getDropzone();
+  const anchor = getAcceptedTypesEl();
+  if (!parent || !anchor) return null;
+  let counter = parent.querySelector('#pdf-count');
+  if (!counter) {
+    counter = document.createElement('p');
+    counter.id = 'pdf-count';
+    counter.className = 'mt-2 text-sm';
+    counter.textContent = `Loaded PDFs: ${state.pdfCount}`;
+    anchor.insertAdjacentElement('afterend', counter);
+  }
+  return counter;
+}
+
+function updatePdfCountUI() {
+  const el = ensurePdfCountEl();
+  if (el) el.textContent = `Loaded PDFs: ${state.pdfCount}`;
+}
+
+let loadingBarRef = null;
+
+function showLoadingBar() {
+  if (loadingBarRef) return loadingBarRef;
+  const hint = getHintEl();
+  const dz = getDropzone();
+  if (!dz) return null;
+  const bar = createLoadingBar();
+  if (hint) {
+    // store original hint to dataset for later restore
+    if (!dz.dataset.originalHintText) dz.dataset.originalHintText = hint.textContent || '';
+    hint.replaceWith(bar.element);
+  } else {
+    dz.prepend(bar.element);
+  }
+  loadingBarRef = bar;
+  return loadingBarRef;
+}
+
+function updateLoadingBar(pct) {
+  if (loadingBarRef) loadingBarRef.update(pct);
+}
+
+function hideLoadingBar() {
+  const dz = getDropzone();
+  if (!dz || !loadingBarRef) return;
+  const originalText = dz.dataset.originalHintText || 'Drag and drop your PDF here or click to select';
+  const p = document.createElement('p');
+  p.className = 'text-lg';
+  p.textContent = originalText;
+  loadingBarRef.element.replaceWith(p);
+  loadingBarRef = null;
+}
 
 // // Embeddings: initialize lazy pipeline and helpers
 // let embedderPromise = null;

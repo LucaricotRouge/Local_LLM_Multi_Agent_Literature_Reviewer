@@ -32,23 +32,26 @@
                     <p class="mt-5 text-sm">Accepted types: PDF (.pdf)</p>
                     <input id="pdf-input" type="file" accept="application/pdf" multiple class="hidden" />
                 </div>
-                <div id="memory-bank" class="mt-5">Stored chunks: <span id="chunk-count">0</span></div>
+                <!-- <div id="memory-bank" class="mt-5">Stored chunks: <span id="chunk-count">0</span></div> -->
+                <div class="flex justify-center text-center mt-5 mb-5">Model Status: <span id="model-status-text">Not loaded</span></div>
             </section>
-            <section id="extracted-text" class="mt-5">
+                            
+            <!-- <section id="extracted-text" class="mt-5">
                 <h2 class="text-lg">Extracted Text</h2>
                 <pre id="extracted-output" class="mt-2 p-5 border-4 border-black h-[300px] overflow-auto whitespace-pre-wrap bg-white"></pre>
-            </section>
-            <div id="discussion-section">
-                <section id="chat" class="mt-5">
+            </section> -->
+            <div id="discussion-section" class="w-full p-5 text-center">
+                <section id="chat" class="w-full border-2 border-black rounded">
                     <h2 class="text-lg">Chat</h2>
                     <div id="chat-history" class="mt-2 p-4 border-4 border-black h-[200px] overflow-auto bg-white whitespace-pre-wrap"></div>
                     <div id="citations" class="mt-2 text-sm text-gray-700"></div>
                 </section>
             </div>
-            <div class="prompt-section">
-                    <textarea id="prompt-input" placeholder="Write your prompt here..."></textarea>
-                    <button id="submit-prompt">Submit Prompt</button>
-                    <div>Model Status: <span id="model-status-text">Not loaded</span></div>
+            <div class="prompt-section w-full p-5 text-center">
+                <div class="w-full flex items-center">
+                    <textarea id="prompt-input" class="border-4 border-black rounded p-5" placeholder="Write your prompt here..." style="flex: 1;"></textarea>
+                    <button id="submit-prompt" class="border-4 border-black rounded p-3 text-white" style="background-color: dimgray; margin-left: 20px;" onmouseover="this.style.backgroundColor='rgb(172, 50, 50)';" onmouseout="this.style.backgroundColor='dimgray';">Submit</button>
+                </div>
             </div>
         </main>
 
