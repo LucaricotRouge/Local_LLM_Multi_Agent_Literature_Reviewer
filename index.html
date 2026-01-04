@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/hack-font@3.3.0/build/web/hack.css">
-    <link href="output.css" rel="stylesheet">
+    <link href="./output.css" rel="stylesheet">
 
         <title>Local LLM Multi-Agent Literature Reviewer</title>
         <!-- PDF.js CDN -->
@@ -61,15 +61,16 @@
     </div>
 
 
-        <!-- Import map for browser modules (Xenova Transformers + WebLLM) -->
+        <!-- Import map to support bare module specifiers in input.js -->
         <script type="importmap">
-            {
-                "imports": {
-                    "@xenova/transformers": "https://cdn.jsdelivr.net/npm/@xenova/transformers@latest",
-                    "@mlc-ai/web-llm": "https://esm.run/@mlc-ai/web-llm@latest"
-                }
-            }
+        {
+        "imports": {
+            "@huggingface/transformers": "https://esm.run/@huggingface/transformers@3.8.1",
+            "@mlc-ai/web-llm": "https://esm.run/@mlc-ai/web-llm@0.2.80"
+        }
+        }
         </script>
+
 
     <script type="module" src="./input.js"></script>
     
