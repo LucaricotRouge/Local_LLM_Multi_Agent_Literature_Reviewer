@@ -1,4 +1,4 @@
-import { pipeline } from '@huggingface/transformers';
+import { pipeline } from '@xenova/transformers';
 import { CreateMLCEngine } from '@mlc-ai/web-llm';
 // import * as webllm from "https://esm.run/@mlc-ai/web-llm";
 
