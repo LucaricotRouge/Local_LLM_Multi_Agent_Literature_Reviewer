@@ -19,6 +19,10 @@
 </head>
 
 <body class="p-10 font-hack bg-white h-screen box-border">
+        <!-- Minimal inline styles for citation number visibility -->
+        <style>
+            .citation-number { color: rgb(172, 50, 50); font-weight: bold; cursor: help; }
+        </style>
 
     <div id="LLM-Multi-Agent-Literature-Reviewer-App" class="h-full flex flex-col">
         <header id ="app-header" class="h-[15%] border-4 border-black flex justify-center">
@@ -44,7 +48,7 @@
                 <section id="chat" class="w-full border-2 border-black rounded">
                     <h2 class="text-lg">Chat</h2>
                     <div id="chat-history" class="mt-2 p-4 border-4 border-black h-[200px] overflow-auto bg-white whitespace-pre-wrap"></div>
-                    <div id="citations" class="mt-2 text-sm text-gray-700"></div>
+                    <div id="citations" class="mt-2"></div>
                 </section>
             </div>
             <div class="prompt-section w-full p-5 text-center">

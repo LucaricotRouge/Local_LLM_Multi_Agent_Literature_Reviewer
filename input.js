@@ -7,9 +7,10 @@ const state = {
   chunksCount: 0,
   chatHistory: [], // [{ role: 'user'|'assistant', content: string }]
   pdfCount: 0,
+  citations: [], // [{ index, source, text, score }]
 };
 
-const systemPrompt = `You are an Academic Research Assistant. Answer succinctly, cite relevant parts of the provided context, and avoid fabricating references. If the context is insufficient, say so and suggest what to upload.`;
+const systemPrompt = `You are an Academic Research Assistant. Give detailed answers, cite relevant parts of the provided context, and avoid fabricating references. If the context is insufficient, say so and suggest what to upload.`;
 
 const llm = {
   engine: null,
@@ -23,9 +24,20 @@ const llm = {
 function tokensFromString(str) { return Math.ceil((str || '').length / 4); } // for brut string (chunks, resume, question), (/4 is average char per token)
 // function tokensFromMsg(msg) { return 2 + tokensFromString(msg?.content || ''); } // for structured message like { role: 'user', content: '...' } (+2 is for role/content overhead)
 
+// Rough token estimate across messages
+function estimateTokens(messages) {
+  return (messages || []).reduce((sum, m) => sum + tokensFromString(m.content) + 4, 0);
+}
+
+// Cap message content length for recent turns
+function capMsg(msg, maxChars = 600) {
+  if (!msg || typeof msg.content !== 'string') return msg;
+  return { ...msg, content: msg.content.slice(0, maxChars) };
+}
+
 const CONTEXT_TOKEN_BUDGET = 1500; // Limit injected context by token budget
 
-const MAX_RECENT_TURNS = 3; // Keep at most N recent user-assistant turns in raw form => make sure recent context is preserved and do not exceed model input limits
+const MAX_RECENT_TURNS = 2; // Keep at most N recent user-assistant turns to limit context size
 
 function selectChunksByBudget(scored, budgetTokens) {
   const picked = [];
@@ -65,7 +77,7 @@ async function summarizeHistory(messages) {
   ];
   try {
     const res = await llm.engine.chat.completions.create({ messages: prompt, temperature: 0.0 });
-    return res?.choices?.[0]?.message?.content || '';
+    return (res?.choices?.[0]?.message?.content || '').slice(0, 800);
   } catch (e) {
     console.warn('Summarization failed:', e);
     return '';
@@ -176,17 +188,6 @@ function renderChat() {
   container.scrollTop = container.scrollHeight;
 }
 
-// Render citations from scored retrieval results
-function renderCitations(scored) {
-  const el = document.getElementById('citations');
-  if (!el) return;
-  if (!scored || !scored.length) { el.textContent = ''; return; }
-  const items = scored.map((s) => {
-    const scoreStr = Number.isFinite(s.score) ? s.score.toFixed(3) : 'n/a';
-    return `• ${s.entry.source} (score: ${scoreStr})`;
-  }).join('\n');
-  el.textContent = `Citations used:\n${items}`;
-}
 
 async function initWebLLM() {
   const modelStatus = document.getElementById('model-status-text');
@@ -313,7 +314,13 @@ async function handleQuery() {
   state.chatHistory.push({ role: 'user', content: question });   // Update chat history with user message
 
   renderChat();
-  renderCitations(picked.map(p => p.scored));
+  state.citations = picked.map((p, idx) => ({
+    index: idx + 1,
+    source: p.scored.entry.source,
+    text: p.scored.entry.text,
+    score: p.scored.score,
+  }));
+  renderCitations(state.citations);
 
   if (!llm.ready || !llm.engine) {
     state.chatHistory.push({ role: 'assistant', content: 'Model not ready yet. Please wait for loading to finish.' });
@@ -324,6 +331,7 @@ async function handleQuery() {
   // Compose messages: system + summarized older history + last N turns + current turn
   const prior = state.chatHistory.slice(0, -1);
   const recent = lastTurns(prior, MAX_RECENT_TURNS);
+  const cappedRecent = recent.map(m => capMsg(m));
   const older = prior.slice(0, Math.max(0, prior.length - recent.length));
   let summary = '';
   if (older.length) summary = await summarizeHistory(older);
@@ -333,15 +341,21 @@ async function handleQuery() {
     : systemPrompt;
   const finalPromptForTheLLM = [
     { role: 'system', content: systemContent },
-    ...recent,
+    ...cappedRecent,
     { role: 'user', content: `Context (may be partial):\n${contextBlock || '(no context available)'}\n\nQuestion: ${question}` }
   ];
+
+  // Global token budget trim (prevent context window overflow)
+  let messages = finalPromptForTheLLM;
+  while (estimateTokens(messages) > 3800 && messages.length > 2) {
+    messages.splice(1, 1); // remove an older message after system
+  }
 
   const submit = document.getElementById('submit-prompt');
   if (submit) submit.disabled = true;
   try {
     const completion = await llm.engine.chat.completions.create({
-      messages:finalPromptForTheLLM,
+      messages,
       temperature: 0.2,
     });
     const content = completion?.choices?.[0]?.message?.content || 'No response.';
@@ -361,6 +375,7 @@ window.addEventListener('DOMContentLoaded', () => {
   initWebLLM();
   const submit = document.getElementById('submit-prompt');
   if (submit) submit.addEventListener('click', handleQuery);
+  attachCitationHoverBehaviour();
 });
 
 
@@ -480,6 +495,51 @@ function hideLoadingBar() {
   p.textContent = originalText;
   loadingBarRef.element.replaceWith(p);
   loadingBarRef = null;
+}
+
+// Render citations from scored retrieval results
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderCitations(citations) {
+  const el = document.getElementById('citations');
+  if (!el) return;
+  if (!citations || !citations.length) { el.textContent = ''; return; }
+
+  // Build minimal list; styling handled in HTML/Tailwind
+  const list = document.createElement('ul');
+  for (const c of citations) {
+    const li = document.createElement('li');
+    const num = document.createElement('span');
+    num.className = 'citation-number'; // semantic hook for JS
+    num.dataset.index = String(c.index);
+    num.textContent = `#${c.index}`;
+    // Native tooltip fallback for visibility
+    num.title = (c.text || '').slice(0, 300);
+    li.appendChild(num);
+    const text = document.createElement('span');
+    const scoreStr = Number.isFinite(c.score) ? c.score.toFixed(3) : 'n/a';
+    text.innerHTML = ` — ${escapeHtml(c.source)} (score: ${scoreStr})`;
+    li.appendChild(text);
+    list.appendChild(li);
+  }
+
+  el.innerHTML = '';
+  el.appendChild(list);
+}
+
+
+function attachCitationHoverBehaviour() {
+  const el = document.getElementById('citations');
+  if (!el || el.dataset.hoverAttached === 'true') return;
+  el.dataset.hoverAttached = 'true';
+  // No custom tooltip events; native title shows on hover.
 }
 
 // // Embeddings: initialize lazy pipeline and helpers
