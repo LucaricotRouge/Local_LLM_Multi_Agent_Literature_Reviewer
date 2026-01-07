@@ -19,10 +19,6 @@
 </head>
 
 <body class="p-10 font-hack bg-white h-screen box-border">
-        <!-- Minimal inline styles for citation number visibility -->
-        <style>
-            .citation-number { color: rgb(172, 50, 50); font-weight: bold; cursor: help; }
-        </style>
 
     <div id="LLM-Multi-Agent-Literature-Reviewer-App" class="h-full flex flex-col">
         <header id ="app-header" class="h-[15%] border-4 border-black flex justify-center">
@@ -37,7 +33,7 @@
                     <input id="pdf-input" type="file" accept="application/pdf" multiple class="hidden" />
                 </div>
                 <!-- <div id="memory-bank" class="mt-5">Stored chunks: <span id="chunk-count">0</span></div> -->
-                <div class="flex justify-center text-center mt-5 mb-5">Model Status: <span id="model-status-text">Not loaded</span></div>
+                <div class="flex justify-center text-center mt-5 mb-5">Model Status : <span id="model-status-text">Not loaded</span></div>
             </section>
                             
             <!-- <section id="extracted-text" class="mt-5">
@@ -48,7 +44,9 @@
                 <section id="chat" class="w-full border-2 border-black rounded">
                     <h2 class="text-lg">Chat</h2>
                     <div id="chat-history" class="mt-2 p-4 border-4 border-black h-[200px] overflow-auto bg-white whitespace-pre-wrap"></div>
-                    <div id="citations" class="mt-2"></div>
+                    <div id="citations" class="mt-4 text-sm"></div>
+                    <div id="chunk-preview" class="mt-4 hidden rounded-lg border border-gray-300 bg-gray-50 p-4 text-sm whitespace-pre-wrap"></div>
+
                 </section>
             </div>
             <div class="prompt-section w-full p-5 text-center">
@@ -64,6 +62,7 @@
         </footer>
     </div>
 
+    <div id="chunk-preview" class="fixed z-50 hidden max-w-lg rounded-lg border-4 border-black bg-white p-4 text-sm shadow-xl whitespace-pre-wrap"></div>
 
         <!-- Import map to support bare module specifiers in input.js -->
         <script type="importmap">

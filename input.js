@@ -7,10 +7,9 @@ const state = {
   chunksCount: 0,
   chatHistory: [], // [{ role: 'user'|'assistant', content: string }]
   pdfCount: 0,
-  citations: [], // [{ index, source, text, score }]
 };
 
-const systemPrompt = `You are an Academic Research Assistant. Give detailed answers, cite relevant parts of the provided context, and avoid fabricating references. If the context is insufficient, say so and suggest what to upload.`;
+const systemPrompt = `You are an Academic Research Assistant. Answer with details, cite relevant parts of the provided context, and avoid fabricating references. If the context is insufficient, say so and suggest what to upload.`;
 
 const llm = {
   engine: null,
@@ -24,20 +23,9 @@ const llm = {
 function tokensFromString(str) { return Math.ceil((str || '').length / 4); } // for brut string (chunks, resume, question), (/4 is average char per token)
 // function tokensFromMsg(msg) { return 2 + tokensFromString(msg?.content || ''); } // for structured message like { role: 'user', content: '...' } (+2 is for role/content overhead)
 
-// Rough token estimate across messages
-function estimateTokens(messages) {
-  return (messages || []).reduce((sum, m) => sum + tokensFromString(m.content) + 4, 0);
-}
-
-// Cap message content length for recent turns
-function capMsg(msg, maxChars = 600) {
-  if (!msg || typeof msg.content !== 'string') return msg;
-  return { ...msg, content: msg.content.slice(0, maxChars) };
-}
-
 const CONTEXT_TOKEN_BUDGET = 1500; // Limit injected context by token budget
 
-const MAX_RECENT_TURNS = 2; // Keep at most N recent user-assistant turns to limit context size
+const MAX_RECENT_TURNS = 3; // Keep at most N recent user-assistant turns in raw form => make sure recent context is preserved and do not exceed model input limits
 
 function selectChunksByBudget(scored, budgetTokens) {
   const picked = [];
@@ -76,8 +64,8 @@ async function summarizeHistory(messages) {
     { role: 'user', content: transcript }
   ];
   try {
-    const res = await llm.engine.chat.completions.create({ messages: prompt, temperature: 0.0 });
-    return (res?.choices?.[0]?.message?.content || '').slice(0, 800);
+    const res = await llm.engine.chat.completions.create({ messages: prompt, temperature: 0.2 });
+    return res?.choices?.[0]?.message?.content || '';
   } catch (e) {
     console.warn('Summarization failed:', e);
     return '';
@@ -181,24 +169,64 @@ function renderChat() {
   container.textContent = '';
   for (const msg of state.chatHistory) {
     const div = document.createElement('div');
-    div.className = msg.role === 'user' ? 'mb-2 text-black' : 'mb-2 text-blue-700';
-    div.textContent = `${msg.role === 'user' ? 'You' : 'Assistant'}: ${msg.content}`;
+    div.className = 'mb-2';
+    div.style.textAlign = msg.role === 'user' ? 'right' : 'left';
+    if (msg.role === 'user') {
+      div.style.marginRight = '1.25rem';
+    } else {
+      div.style.marginLeft = '1.25rem';
+    }
+
+    const label = document.createElement('span');
+    label.style.color = 'rgb(172, 50, 50)';
+    label.textContent = (msg.role === 'user') ? '\n You : ' : '\n Assistant : ';
+
+    const content = document.createTextNode(`${msg.content} \n\n`);
+
+    div.appendChild(label);
+    div.appendChild(content);
     container.appendChild(div);
   }
   container.scrollTop = container.scrollHeight;
 }
 
+// Render citations from scored retrieval results
+function renderCitations(scored) {
+  const el = document.getElementById('citations');
+  if (!el) return;
+  el.innerHTML = '';
+  if (!scored?.length) return;
+  const title = document.createElement('div');
+  title.textContent = 'Citations used:';
+  title.className = 'mt-5 mb-3 font-semibold';
+  el.appendChild(title);
+  scored.forEach((s, i) => {
+    const ref = document.createElement('span');
+    ref.textContent = `#${i + 1} `; 
+    ref.className =
+      'mr-3 cursor-pointer font-bold text-[rgb(172,50,50)]';
+    ref.addEventListener('mouseenter', (e) => {
+      showChunkPreview(e, s.entry.text, s.entry.source);
+    });
+    ref.addEventListener('mousemove', moveChunkPreview);
+    ref.addEventListener('mouseleave', hideChunkPreview);
+    el.appendChild(ref);
+  });
+}
+
+
+
 
 async function initWebLLM() {
   const modelStatus = document.getElementById('model-status-text');
   try {
-    if (modelStatus) modelStatus.textContent = 'Loading WebLLM…';
+    if (modelStatus) modelStatus.textContent = ' Loading WebLLM…';
     // Let WebLLM choose the best available backend automatically
     llm.engine = await CreateMLCEngine('Llama-3.2-1B-Instruct-q4f32_1-MLC');
     llm.ready = true;
-    if (modelStatus) modelStatus.textContent = 'Ready: Llama-3.2-1B-Instruct';
+    if (modelStatus) modelStatus.textContent = ' Ready : Llama-3.2-1B-Instruct';
   } catch (err) {
-    if (modelStatus) modelStatus.textContent = 'Failed to load model';
+    if (modelStatus) modelStatus.textContent = ' Failed to load model';
     console.error('WebLLM init error:', err);
   }
 }
@@ -314,13 +342,7 @@ async function handleQuery() {
   state.chatHistory.push({ role: 'user', content: question });   // Update chat history with user message
 
   renderChat();
-  state.citations = picked.map((p, idx) => ({
-    index: idx + 1,
-    source: p.scored.entry.source,
-    text: p.scored.entry.text,
-    score: p.scored.score,
-  }));
-  renderCitations(state.citations);
+  renderCitations(picked.map(p => p.scored));
 
   if (!llm.ready || !llm.engine) {
     state.chatHistory.push({ role: 'assistant', content: 'Model not ready yet. Please wait for loading to finish.' });
@@ -331,7 +353,6 @@ async function handleQuery() {
   // Compose messages: system + summarized older history + last N turns + current turn
   const prior = state.chatHistory.slice(0, -1);
   const recent = lastTurns(prior, MAX_RECENT_TURNS);
-  const cappedRecent = recent.map(m => capMsg(m));
   const older = prior.slice(0, Math.max(0, prior.length - recent.length));
   let summary = '';
   if (older.length) summary = await summarizeHistory(older);
@@ -341,21 +362,15 @@ async function handleQuery() {
     : systemPrompt;
   const finalPromptForTheLLM = [
     { role: 'system', content: systemContent },
-    ...cappedRecent,
+    ...recent,
     { role: 'user', content: `Context (may be partial):\n${contextBlock || '(no context available)'}\n\nQuestion: ${question}` }
   ];
-
-  // Global token budget trim (prevent context window overflow)
-  let messages = finalPromptForTheLLM;
-  while (estimateTokens(messages) > 3800 && messages.length > 2) {
-    messages.splice(1, 1); // remove an older message after system
-  }
 
   const submit = document.getElementById('submit-prompt');
   if (submit) submit.disabled = true;
   try {
     const completion = await llm.engine.chat.completions.create({
-      messages,
+      messages:finalPromptForTheLLM,
       temperature: 0.2,
     });
     const content = completion?.choices?.[0]?.message?.content || 'No response.';
@@ -375,7 +390,6 @@ window.addEventListener('DOMContentLoaded', () => {
   initWebLLM();
   const submit = document.getElementById('submit-prompt');
   if (submit) submit.addEventListener('click', handleQuery);
-  attachCitationHoverBehaviour();
 });
 
 
@@ -497,50 +511,47 @@ function hideLoadingBar() {
   loadingBarRef = null;
 }
 
-// Render citations from scored retrieval results
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+function showChunkPreview(event, text, source) {
+  const box = document.getElementById('chunk-preview');
+  if (!box) return;
+  box.textContent =
+    `Source: ${source}\n\n` +
+    text.slice(0, 1200) +
+    (text.length > 1200 ? '…' : '');
+  box.classList.remove('hidden');
+  positionChunkPreview(event);
 }
 
-function renderCitations(citations) {
-  const el = document.getElementById('citations');
-  if (!el) return;
-  if (!citations || !citations.length) { el.textContent = ''; return; }
+function moveChunkPreview(event) {
+  positionChunkPreview(event);
+}
 
-  // Build minimal list; styling handled in HTML/Tailwind
-  const list = document.createElement('ul');
-  for (const c of citations) {
-    const li = document.createElement('li');
-    const num = document.createElement('span');
-    num.className = 'citation-number'; // semantic hook for JS
-    num.dataset.index = String(c.index);
-    num.textContent = `#${c.index}`;
-    // Native tooltip fallback for visibility
-    num.title = (c.text || '').slice(0, 300);
-    li.appendChild(num);
-    const text = document.createElement('span');
-    const scoreStr = Number.isFinite(c.score) ? c.score.toFixed(3) : 'n/a';
-    text.innerHTML = ` — ${escapeHtml(c.source)} (score: ${scoreStr})`;
-    li.appendChild(text);
-    list.appendChild(li);
+function hideChunkPreview() {
+  const box = document.getElementById('chunk-preview');
+  if (!box) return;
+  box.classList.add('hidden');
+}
+
+function positionChunkPreview(event) {
+  const box = document.getElementById('chunk-preview');
+  if (!box) return;
+  const padding = 16;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const rect = box.getBoundingClientRect();
+  let x = event.clientX + padding;
+  let y = event.clientY + padding;
+  if (x + rect.width > vw) {
+    x = event.clientX - rect.width - padding;
   }
-
-  el.innerHTML = '';
-  el.appendChild(list);
+  if (y + rect.height > vh) {
+    y = event.clientY - rect.height - padding;
+  }
+  box.style.left = `${Math.max(8, x)}px`;
+  box.style.top = `${Math.max(8, y)}px`;
 }
 
 
-function attachCitationHoverBehaviour() {
-  const el = document.getElementById('citations');
-  if (!el || el.dataset.hoverAttached === 'true') return;
-  el.dataset.hoverAttached = 'true';
-  // No custom tooltip events; native title shows on hover.
-}
 
 // // Embeddings: initialize lazy pipeline and helpers
 // let embedderPromise = null;
