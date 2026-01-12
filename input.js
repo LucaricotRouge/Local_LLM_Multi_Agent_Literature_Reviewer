@@ -9,7 +9,7 @@ const state = {
   pdfCount: 0,
 };
 
-const systemPrompt = `You are an Academic Research Assistant. Answer with details, cite relevant parts of the provided context, and avoid fabricating references. If the context is insufficient, say so and suggest what to upload.`;
+const systemPrompt = `You are an Academic Research Assistant. Answer only in english by giving detailed answers, cite relevant parts of the provided context, and avoid fabricating references. If the context is insufficient, say so and suggest what to upload.`;
 
 const llm = {
   engine: null,
